@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="IOSlider">
+        <attr name="activeTrackColor" format="color"/>
+        <attr name="inactiveTrackColor" format="color"/>
+        <attr name="strokeColor" format="color"/>
+        <attr name="strokeWidth" format="dimension"/>
+        <attr name="icon" format="reference"/>
+        <attr name="iconColor" format="color"/>
+        <attr name="iconSize" format="dimension"/>
+        <attr name="labelText" format="string"/>
+        <attr name="labelColor" format="color" />
+        <attr name="labelSize" format="dimension"/>
+        <attr name="blendLabelIcon" format="boolean"/>
+        <attr name="cornerRadius" format="dimension" />
+        <attr name="min" format="integer"/>
+        <attr name="max" format="integer"/>
+        <attr name="progress" format="integer"/>
+        <attr name="touchMode" format="enum">
+            <enum value="0" name="drag"/>
+            <enum value="1" name="touch"/>
+        </attr>
+        <attr name="iconTextVisibility" format="enum">
+            <enum value="0" name="icon"/>
+            <enum value="1" name="text"/>
+            <enum value="2" name="icontext"/>
+            <enum value="3" name="texticon"/>
+        </attr>
+    </declare-styleable>
+
+    <attr name="IOSliderStyle" format="reference" />
+</resources>
