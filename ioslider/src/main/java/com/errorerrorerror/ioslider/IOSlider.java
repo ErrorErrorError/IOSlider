@@ -980,12 +980,12 @@ public class IOSlider extends View {
         float dY;
         boolean handledTouch = false;
         boolean needsUpdate = false;
-        int height = getHeight() - (getPaddingTop() + getPaddingBottom());
+        int height = getHeight() - (getPaddingTop() + getPaddingBottom()) - strokeWidth;
 
         switch (event.getAction() & MotionEvent.ACTION_MASK) {
             case MotionEvent.ACTION_DOWN:
                 getParent().requestDisallowInterceptTouchEvent(true);
-                lastTouchY = event.getY() - getPaddingTop();
+                lastTouchY = event.getY() - getPaddingTop() - Math.round(strokeWidth/2);
                 if (touchMode == TOUCH) {
                     mProgress = mVisualProgress = Math.max(0.0f, Math.min(1.0f, 1.0f - (lastTouchY / height)));
                     needsUpdate = true;
@@ -997,18 +997,15 @@ public class IOSlider extends View {
 
             case MotionEvent.ACTION_MOVE:
                 getParent().requestDisallowInterceptTouchEvent(true);
-                dY = lastTouchY - event.getY() + getPaddingTop();
+                dY = lastTouchY - event.getY() + getPaddingTop() + Math.round(strokeWidth/2);
                 needsUpdate = calculateValueFromEvent(dY, height);
-                lastTouchY = event.getY() - getPaddingTop();
+                lastTouchY-= dY;
                 setPressed(true);
                 handledTouch = true;
                 break;
 
             case MotionEvent.ACTION_UP:
                 getParent().requestDisallowInterceptTouchEvent(false);
-                dY = lastTouchY - event.getY() + getPaddingTop();
-                needsUpdate = calculateValueFromEvent(dY, height);
-                lastTouchY = event.getY() - getPaddingTop();
                 dispatchOnStopTrackingTouch();
                 setPressed(false);
                 handledTouch = true;
@@ -1032,9 +1029,9 @@ public class IOSlider extends View {
         return handledTouch;
     }
 
-    private boolean calculateValueFromEvent(float distanceXY, int height) {
+    private boolean calculateValueFromEvent(float distanceYY, int height) {
         boolean updatedValue = false;
-        float distance = distanceXY / height;
+        float distance = distanceYY / height;
         float newProgress = mProgress + distance;
         newProgress = Math.max(0.0f, Math.min(1.0f, newProgress));
         if (mProgress != newProgress) {
@@ -1090,26 +1087,27 @@ public class IOSlider extends View {
         drawIcon(canvas, left, top);
 
         // Draws the stroke
-        canvas.drawPath(strokePath, strokePaint);
+        // We have to use round rect since path causes the view to draw another layer
+        canvas.drawRoundRect(left, top, right, bottom, mRadius, mRadius, strokePaint);
     }
 
     private void drawInactiveTrack(Canvas canvas, int left, int top, int right, int bottom) {
         float inactiveTrackRange = 1f - mVisualProgress;
 
-        int height = bottom - top;
+        int height = bottom - top - strokeWidth;
 
-        bottom = Math.round(inactiveTrackRange * height) + getPaddingTop();
+        bottom = Math.round(inactiveTrackRange * height) + getPaddingTop() + strokeWidth/2;
 
-        inactiveTrackRect.set(left, top, right, bottom);
+        inactiveTrackRect.set(left + strokeWidth/2, top + strokeWidth/2, right - strokeWidth/2, bottom);
         canvas.drawRect(inactiveTrackRect, inactiveTrackPaint);
     }
 
     private void drawActiveTrack(Canvas canvas, int left, int top, int right, int bottom) {
-        int height = bottom - top;
+        int height = bottom - top - strokeWidth;
 
-        top = Math.round(height - (mVisualProgress * height)) + getPaddingTop();
+        top = Math.round(height - (mVisualProgress * height)) + getPaddingTop() + strokeWidth/2;
 
-        activeTrackRect.set(left, top, right, bottom);
+        activeTrackRect.set(left + strokeWidth/2, top, right - strokeWidth/2, bottom - strokeWidth/2);
         canvas.drawRect(activeTrackRect, activeTrackPaint);
     }
 
