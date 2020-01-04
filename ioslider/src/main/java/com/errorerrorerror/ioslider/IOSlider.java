@@ -56,7 +56,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-@SuppressWarnings("unused")
 public class IOSlider extends View {
 
     private static final String TAG = IOSlider.class.getName();
@@ -987,7 +986,6 @@ public class IOSlider extends View {
             case MotionEvent.ACTION_DOWN:
                 getParent().requestDisallowInterceptTouchEvent(true);
                 lastTouchY = event.getY() - getPaddingTop();
-                Log.d(TAG, "onTouchEvent: Touch: " + lastTouchY + " padding: " + getPaddingTop());
                 if (touchMode == TOUCH) {
                     mProgress = mVisualProgress = Math.max(0.0f, Math.min(1.0f, 1.0f - (lastTouchY / height)));
                     needsUpdate = true;
@@ -1000,7 +998,6 @@ public class IOSlider extends View {
             case MotionEvent.ACTION_MOVE:
                 getParent().requestDisallowInterceptTouchEvent(true);
                 dY = lastTouchY - event.getY() + getPaddingTop();
-                Log.d(TAG, "onTouchEvent: Drag" + dY);
                 needsUpdate = calculateValueFromEvent(dY, height);
                 lastTouchY = event.getY() - getPaddingTop();
                 setPressed(true);
@@ -1235,7 +1232,6 @@ public class IOSlider extends View {
     }
 
     /////////////// LottieDrawable Settings /////////////////
-
     /**
      * Sets the animation from a file in the raw directory. This is used for animating
      * {@link LottieDrawable} on progress changed.
