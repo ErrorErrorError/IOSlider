@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">IOSliderExample</string>
+    <string name="corner_radius">Corner Radius</string>
+    <string name="stroke">Stroke</string>
+    <string name="elevatiion">Elevatiion</string>
 </resources>

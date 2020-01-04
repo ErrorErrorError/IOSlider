@@ -44,6 +44,7 @@ import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import com.airbnb.lottie.LottieComposition;
 import com.airbnb.lottie.LottieCompositionFactory;
 import com.airbnb.lottie.LottieDrawable;
+import com.airbnb.lottie.LottieListener;
 import com.airbnb.lottie.LottieProperty;
 import com.airbnb.lottie.LottieTask;
 import com.airbnb.lottie.model.KeyPath;
@@ -177,7 +178,7 @@ public class IOSlider extends View {
     /**
      * The width of the stroke.
      */
-    private float strokeWidth;
+    private int strokeWidth;
 
     /**
      * The text to show.
@@ -302,7 +303,7 @@ public class IOSlider extends View {
         minValue = ta.getInt(R.styleable.IOSlider_min, 0);
         maxValue = ta.getInt(R.styleable.IOSlider_max, 100);
 
-        strokeWidth = ta.getDimension(R.styleable.IOSlider_strokeWidth, 0);
+        strokeWidth = ta.getDimensionPixelSize(R.styleable.IOSlider_strokeWidth, 0);
         strokeColor = getColorStateList(context, ta, R.styleable.IOSlider_strokeColor, android.R.color.transparent);
 
         iconLabelBlending = ta.getBoolean(R.styleable.IOSlider_blendLabelIcon, false);
@@ -504,7 +505,7 @@ public class IOSlider extends View {
      * Returns the stroke width.
      * @see #setStrokeWidth(int)
      */
-    public float getStrokeWidth() {
+    public int getStrokeWidth() {
         return strokeWidth;
     }
 
@@ -1267,18 +1268,34 @@ public class IOSlider extends View {
         cancelLoaderTask();
         clearComposition();
         compositionTask
-                .addListener(this::setComposition)
-                .addFailureListener(result -> {
-                    throw new IllegalStateException("Unable to parse composition", result);
+                .addListener(new LottieListener<LottieComposition>() {
+                    @Override
+                    public void onResult(LottieComposition result) {
+                        setComposition(result);
+                    }
+                })
+                .addFailureListener(new LottieListener<Throwable>() {
+                    @Override
+                    public void onResult(Throwable result) {
+                        throw new IllegalStateException("Unable to parse composition", result);
+                    }
                 });
     }
 
     private void cancelLoaderTask() {
         if (lottieCompositionTask == null) return;
         lottieCompositionTask
-                .removeListener(this::setComposition)
-                .removeFailureListener(result -> {
-                    throw new IllegalStateException("Unable to parse composition", result);
+                .removeListener(new LottieListener<LottieComposition>() {
+                    @Override
+                    public void onResult(LottieComposition result) {
+                        setComposition(result);
+                    }
+                })
+                .removeFailureListener(new LottieListener<Throwable>() {
+                    @Override
+                    public void onResult(Throwable result) {
+                        throw new IllegalStateException("Unable to parse composition", result);
+                    }
                 });
     }
 
