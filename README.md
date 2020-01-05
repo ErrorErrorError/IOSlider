@@ -61,7 +61,7 @@ dependencies {
     app:iconTextVisibility="icontext" />
 ```
 | Attributes | Description |
-|:------------:|:------------:|
+|:--|:--|
 | activeTrackColor | Sets the active track color.|
 | inactiveTrackColor | Sets the inactive track color.|
 | strokeColor | Sets the stroke color. |
