@@ -11,7 +11,7 @@
         <attr name="labelText" format="string"/>
         <attr name="labelColor" format="color" />
         <attr name="labelSize" format="dimension"/>
-        <attr name="blendLabelIcon" format="boolean"/>
+        <attr name="blendIconLabel" format="boolean"/>
         <attr name="cornerRadius" format="dimension" />
         <attr name="min" format="integer"/>
         <attr name="max" format="integer"/>

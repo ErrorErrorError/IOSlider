@@ -131,6 +131,7 @@
         android:paddingTop="20dp"
         android:layout_marginTop="20dp"
         android:paddingBottom="20dp"
+        app:icon="@raw/brightness_anim"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

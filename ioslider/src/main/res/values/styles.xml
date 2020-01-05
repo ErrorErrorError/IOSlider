@@ -2,13 +2,14 @@
 <resources>
     <style name="Base.Widget.IOSlider" parent="android:Widget">
         <item name="iconColor">@color/slider_icon_color</item>
-        <item name="activeTrackColor">?attr/colorControlActivated</item>
+        <item name="activeTrackColor">@color/slider_active_track_color</item>
         <item name="inactiveTrackColor">@color/slider_inactive_track_color</item>
         <item name="cornerRadius">@dimen/corner_radius</item>
         <item name="labelColor">@color/slider_text_color</item>
         <item name="labelSize">@dimen/text_size</item>
         <item name="icon">@raw/brightness_animation</item>
         <item name="iconTextVisibility">icontext</item>
+        <item name="blendIconLabel">true</item>
     </style>
 
     <style name="Widget.IOSlider" parent="Base.Widget.IOSlider"/>

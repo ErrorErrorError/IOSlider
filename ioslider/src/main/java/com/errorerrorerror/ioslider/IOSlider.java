@@ -305,7 +305,7 @@ public class IOSlider extends View {
         strokeWidth = ta.getDimensionPixelSize(R.styleable.IOSlider_strokeWidth, 0);
         strokeColor = getColorStateList(context, ta, R.styleable.IOSlider_strokeColor, android.R.color.transparent);
 
-        iconLabelBlending = ta.getBoolean(R.styleable.IOSlider_blendLabelIcon, false);
+        iconLabelBlending = ta.getBoolean(R.styleable.IOSlider_blendIconLabel, false);
 
         touchMode = ta.getInt(R.styleable.IOSlider_touchMode, DRAG);
 
