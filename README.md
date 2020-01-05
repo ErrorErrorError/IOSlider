@@ -31,7 +31,7 @@ allprojects {
 }
 
 dependencies {
-        implementation 'com.github.ErrorErrorError:IOSlider:Tag'
+        implementation 'com.github.ErrorErrorError:IOSlider:1.0.0'
 }
 ```
 # Usage
