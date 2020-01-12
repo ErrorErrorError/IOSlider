@@ -17,6 +17,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.util.AttributeSet;
@@ -39,6 +40,7 @@ import androidx.annotation.RawRes;
 import androidx.annotation.StyleableRes;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 
 import com.airbnb.lottie.LottieComposition;
@@ -239,14 +241,10 @@ public class IOSlider extends View {
     }
 
     public IOSlider(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
-        this(context, attrs, defStyleAttr, DEF_STYLE_RES);
-    }
-
-    public IOSlider(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
-        super(context, attrs, defStyleAttr, defStyleRes);
+        super(context, attrs, defStyleAttr);
         setSaveEnabled(true);
 
-        getResources(context, attrs, defStyleAttr, defStyleRes);
+        getResources(context, attrs, defStyleAttr);
 
         inactiveTrackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         inactiveTrackPaint.setStyle(Paint.Style.FILL);
@@ -279,8 +277,8 @@ public class IOSlider extends View {
         }
     }
 
-    private void getResources(Context context, @Nullable AttributeSet attrs, int style, int res) {
-        TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.IOSlider, style, res);
+    private void getResources(Context context, @Nullable AttributeSet attrs, int style) {
+        TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.IOSlider, style, IOSlider.DEF_STYLE_RES);
 
         mRadius = ta.getDimensionPixelSize(R.styleable.IOSlider_cornerRadius, context.getResources().getDimensionPixelSize(R.dimen.corner_radius));
 
@@ -420,7 +418,9 @@ public class IOSlider extends View {
 
         if (animate) {
             animator = ObjectAnimator.ofFloat(this,  PROPERTY_VISUAL, scaled);
-            animator.setAutoCancel(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+                animator.setAutoCancel(true);
+            }
             animator.setDuration(ANIMATION_DURATION);
             animator.setInterpolator(TIME_INTERPOLATOR);
             animator.start();
@@ -924,9 +924,11 @@ public class IOSlider extends View {
             ((LottieDrawable) iconDrawable).addValueCallback(keyPath, LottieProperty.COLOR_FILTER, callback);
 
         } else {
-            if (iconDrawable.getColorFilter() != colorFilter) {
-                iconDrawable.setColorFilter(colorFilter);
-            }
+//            if (iconDrawable.getColorFilter() != colorFilter) {
+//                iconDrawable.setColorFilter(colorFilter);
+//            }
+//
+            DrawableCompat.setTintList(iconDrawable, colorStateList);
         }
     }
 
@@ -956,15 +958,37 @@ public class IOSlider extends View {
         int right = width - getPaddingEnd();
         int bottom = height - getPaddingBottom();
 
-        setOutlineProvider(new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(left, top, right, bottom, mRadius);
-            }
-        });
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(left, top, right, bottom, mRadius);
+                }
+            });
 
-        strokePath.reset();
-        strokePath.addRoundRect(left, top, right, bottom, mRadius, mRadius, Path.Direction.CW);
+            strokePath.reset();
+            strokePath.addRoundRect(left, top, right, bottom, mRadius, mRadius, Path.Direction.CW);
+        } else {
+            strokePath.reset();
+            strokePath.addPath(createRoundRect(left, top, right, bottom, mRadius));
+        }
+    }
+
+    /// For api lower than 21
+    public static Path createRoundRect(int left, int top, int right, int bottom, float radius){
+        Path path = new Path();
+        path.moveTo(left + radius,top);
+        path.lineTo(right - radius,top);
+        path.quadTo(right, top, right, top + radius);
+        path.lineTo(right ,bottom - radius);
+        path.quadTo(right ,bottom, right - radius, bottom);
+        path.lineTo(left + radius,bottom);
+        path.quadTo(left,bottom,left, bottom - radius);
+        path.lineTo(left,top + radius);
+        path.quadTo(left,top, left + radius, top);
+        path.close();
+
+        return path;
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1088,7 +1112,11 @@ public class IOSlider extends View {
 
         // Draws the stroke
         // We have to use round rect since path causes the view to draw another layer
-        canvas.drawRoundRect(left, top, right, bottom, mRadius, mRadius, strokePaint);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            canvas.drawRoundRect(left, top, right, bottom, mRadius, mRadius, strokePaint);
+        } else {
+            canvas.drawPath(strokePath, strokePaint);
+        }
     }
 
     private void drawInactiveTrack(Canvas canvas, int left, int top, int right, int bottom) {
@@ -1317,7 +1345,7 @@ public class IOSlider extends View {
     };
 
     /**
-     * Helper method to get color state list and not null.
+     * Helper method to get color state list.
      */
     @NonNull
     private static ColorStateList getColorStateList(@NonNull Context context, @NonNull TypedArray attributes, @StyleableRes int index, @ColorRes int defaultValue) {

@@ -1,5 +1,6 @@
 package com.errorerrorerror.iosliderexample;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
@@ -27,7 +28,9 @@ public class MainActivity extends AppCompatActivity {
 
         corner = binding.slider.getCornerRadius();
         stroke = binding.slider.getStrokeWidth();
-        elevation = binding.slider.getElevation();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            elevation = binding.slider.getElevation();
+        }
 
         binding.cornerValue.setText(String.valueOf(corner));
         binding.strokeValue.setText(String.valueOf(stroke));
@@ -78,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 elevation += 10;
                 dispatchElevation(binding.slider, binding.elevation, elevation);
+
             }
         });
     }
@@ -93,7 +97,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     static void dispatchElevation(final IOSlider slider, final TextView view, float elevation) {
-        slider.setElevation(elevation);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            slider.setElevation(elevation);
+        }
         view.setText(String.valueOf(elevation));
     }
 
