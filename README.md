@@ -1,5 +1,5 @@
 # IOSlider
-[![API](https://img.shields.io/badge/API-21%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=21#l21)
+[![API](https://img.shields.io/badge/API-17%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=17#l17)
 [![](https://jitpack.io/v/ErrorErrorError/IOSlider.svg)](https://jitpack.io/#ErrorErrorError/IOSlider)
 
 This is a customizable slider library for Android.
@@ -19,7 +19,7 @@ Library design inspired by [JD](https://dribbble.com/shots/6315813-HomeApp-dark-
 - More features coming soon. If you have any feature requests feel free to suggest.
 
 # Compatibility:
-Currently it only supports on api 21+ but I will bring support to lower api soon.
+Supports from API 17+
 
 # Setup:
 ``` gradle
@@ -31,7 +31,7 @@ allprojects {
 }
 
 dependencies {
-        implementation 'com.github.ErrorErrorError:IOSlider:1.0.0'
+        implementation 'com.github.ErrorErrorError:IOSlider:1.1.0'
 }
 ```
 # Usage
