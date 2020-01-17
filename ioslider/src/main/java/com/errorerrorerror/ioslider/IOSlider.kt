@@ -25,12 +25,13 @@ import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import com.airbnb.lottie.*
 import com.airbnb.lottie.model.KeyPath
 import com.airbnb.lottie.value.LottieValueCallback
-import com.errorerrorerror.ioslider.IOSlider
-import java.lang.annotation.Retention
-import java.lang.annotation.RetentionPolicy
 import java.util.*
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = R.attr.IOSliderStyle) : View(context, attrs, defStyleAttr) {
+
     /**
      * This callback listens for changes in [IOSlider].
      */
@@ -40,12 +41,13 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
          *
          * @param slider The current slider that has been changed.
          * @param progress the current progress level. The value varies
-         * between [.minValue] and [.maxValue].
-         * These values can be set by using [.setMinValue]
-         * and [.setMaxValue]
+         * between [minValue] and [maxValue].
+         * These values can be set by using [minValue]
+         * and [maxValue] setters.
+         *
          * @param fromUser Alerts the client if the progress was changed by the user.
          */
-        fun onProgressChanged(slider: IOSlider?, progress: Int, fromUser: Boolean)
+        fun onProgressChanged(slider: IOSlider, progress: Int, fromUser: Boolean)
     }
 
     /**
@@ -56,111 +58,403 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
          * Notifies when user touches the slider.
          * @param slider The slider that was touched.
          */
-        fun onStartTrackingTouch(slider: IOSlider?)
+        fun onStartTrackingTouch(slider: IOSlider)
 
         /**
          * Notifies when the user stops touching the slider.
          * @param slider The slider that stopped being touched.
          */
-        fun onStopTrackingTouch(slider: IOSlider?)
+        fun onStopTrackingTouch(slider: IOSlider)
     }
 
     @IntDef(DRAG, TOUCH)
-    @Retention(RetentionPolicy.SOURCE)
+    @Retention(AnnotationRetention.SOURCE)
     annotation class TouchMode
 
+    /**
+     * This allows for user to either drag the slider by passing
+     * {@value DRAG} of if you want the progress to change on touch you can
+     * pass {@value TOUCH}.
+     */
     @TouchMode
-    private var touchMode = 0
+    var touchMode = 0
+        set(value) {
+            if (value != TOUCH && value != DRAG) return
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
 
     @IntDef(TEXT, ICON, TEXTICON, ICONTEXT, NONE)
-    @Retention(RetentionPolicy.SOURCE)
+    @Retention(AnnotationRetention.SOURCE)
     annotation class IconTextVisibility
 
+    /**
+     * This allows for the user to either show the icon or/and the label
+     * and the order in which to show.
+     */
     @IconTextVisibility
-    private var iconLabelVisibility = 0
+    var iconLabelVisibility = 0
+        set(value) {
+            if (value != field) {
+                field = value
+                invalidate()
+            }
+        }
+
     /**
-     * The corner radius of the view.
+     * This is the current progress of the slider
      */
-    private var mRadius = 0
+    var progress: Int
+        /**
+         * Returns the progress of the slider in respect to [minValue]
+         * and [maxValue].
+         * @see rawProgress
+         */
+        get() = ((maxValue - minValue) * rawProgress + minValue).roundToInt()
+
+        /**
+         * Sets the slider to the specified value without animation.
+         *
+         * Does not do anything if the value is less than or
+         * more than maximum value.
+         *
+         * @param progress the desired progress the user wants.
+         * Must be in between `minValue ` and `maxValue ` inclusive.
+         */
+        set(progress) {
+            setProgressInternal(progress, false)
+        }
+
     /**
-     * The size of the label.
-     */
-    private var labelSize = 0
-    /**
-     * This method returns the actual progress of the slider. This is used
+     * This method is the raw progress of the slider. This is used
      * to draw the slider's active track and get the value of the progress.
      *
-     * @see .getProgress
      */
-    /**
-     * The actual progress.
-     */
-    @get:FloatRange(from = 0f, to = 1f)
-    @FloatRange(from = 0f, to = 1f)
+    @get:FloatRange(from = 0.0, to = 1.0)
+    @FloatRange(from = 0.0, to = 1.0)
     var rawProgress = 0f
         private set
+
     /**
      * This is used mainly for animating the progress of the view so
      * it will not interfere with the actual progress.
      */
-    @FloatRange(from = 0f, to = 1f)
-    private var mVisualProgress = 0f
+    @FloatRange(from = 0.0, to = 1.0)
+    private var visualProgress = 0f
+        /**
+         * Sets the progress for the visual. Used with [ObjectAnimator] to animate the progress.
+         * @param value the new value to update the visual progress
+         */
+        set(value) {
+            field = value
+            updateText()
+            updateIconAnimation()
+            invalidate()
+        }
+
+    var cornerRadius: Int = 0
+        /**
+         * Sets the corner radius of the view.
+         *
+         * @param value the new corner radius.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                updateShadowAndOutline(width, height)
+                invalidate()
+            }
+        }
+
+    /**
+     * The size of the label.
+     */
+    var labelSize = 0
+    set(value) {
+        if (value != field) {
+            field = value
+            updateTextSize()
+            invalidate()
+        }
+    }
+
     /**
      * The minimum value the progress can go.
      */
-    private var minValue = 0
+    var minValue = 0
+        /**
+         * Sets the minimum value to the specified value.
+         *
+         * @throws IllegalArgumentException if the minimum value is greater than or
+         * equal to [maxValue]
+         * @param value the desired minimum value for the slider.
+         */
+        set(value) {
+            field = value
+            if (canValidate) {
+                validateMinValue()
+            }
+        }
+
     /**
      * The maximum value the progress can go.
      */
-    private var maxValue = 0
+    var maxValue = 100
+        /**
+         * Sets the maximum value to the specified value.
+         *
+         * @throws IllegalArgumentException if the maximum value is less than or
+         * equal to [minValue]
+         * @see .getMaxValue
+         * @param value the desired maximum value for the slider
+         */
+        set(value) {
+            field = value
+            if (canValidate) {
+                validateMaxValue()
+            }
+        }
+
     /**
      * The width of the stroke.
      */
-    private var strokeWidth = 0
+    var strokeWidth = 0
+        /**
+         * Sets the width of the stroke.
+         *
+         * @param value the new width of the stroke.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                strokePaint.strokeWidth = field.toFloat()
+                invalidate()
+            }
+        }
+
     /**
-     * The text to show.
+     * Sets the text for the label. By default, the label shows the percentage
+     * in between [minValue] and [maxValue].
      */
-    private var labelText = ""
+    var labelText = ""
+
     /**
      * The size of the icon.
      */
     @Dimension
-    private var iconSize = 0
+    var iconSize = 0
+        /**
+         * Sets the size of the icon.
+
+         * @param value the new size for the icon.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                updateIconSize()
+                invalidate()
+            }
+        }
+
     /**
      * Blend the icon and label based on the progress.
      */
-    private var iconLabelBlending = false
+    var iconLabelBlending = false
+        /**
+         * This method blends the icon and label based on the progress. If the progress
+         * draws under the icon or label, it colors them with the inactive color.
+         *
+         * @param value either blend or not blend the color.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                invalidate()
+            }
+        }
+
     /**
      * Whether or not it should set the text to show the percentage of
      * the progress.
      */
-    private var labelAsPercentage = true
+    var labelAsPercentage = true
+        /**
+         * This method  sets the label to show the percentage of the progress.
+         *
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                updateText()
+                invalidate()
+            }
+        }
+
+    var labelColor: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
+        /**
+         * Sets the label text to the specified color list. Does not do anything if
+         * the color state list is the same.
+         *
+         * Note: If you have blending mode enabled it will still update the color but
+         * depending on the [.mProgress] it might be showing the inverted color.
+
+         * @param value the new color state list.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                textPaint.color = getColorForState(field)
+                invalidate()
+            }
+        }
+
+    var inactiveTrackColor: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
+        /**
+         * Sets the new color state list for the inactive track.
+         * This cannot be null.
+         *
+         * @param value the new color state list.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                inactiveTrackPaint.color = getColorForState(field)
+                invalidate()
+            }
+        }
+
+    private var activeTrackColor: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
+        /**
+         * Sets the new color state list for the active track.
+         * This cannot be null.
+         *
+         * @param value the new color state list.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                activeTrackPaint.color = getColorForState(field)
+                invalidate()
+            }
+        }
+
+    private var iconColor: ColorStateList? = null
+        /**
+         * Sets the icon color. It uses [PorterDuffColorFilter] with
+         * [PorterDuff.Mode.SRC_IN] to set the color state list.
+         * It may be null to remove the color overlay.
+         *
+         * @see .setIconColor
+         * @see .getIconColor
+         * @param value the new color state list or null
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                updateIconDrawableColor(value)
+                invalidate()
+            }
+        }
+
+    private var strokeColor: ColorStateList = ColorStateList.valueOf(Color.TRANSPARENT)
+        /**
+         * Sets the new color state list for the stroke. This cannot be null.
+         *
+         * @param value the new color state list.
+         */
+        set(value) {
+            if (value != field) {
+                field = value
+                invalidate()
+            }
+        }
+
+    var iconDrawable: Drawable? = null
+        /**
+         * Sets the icon drawable. Can pass null to remove the icon.
+         *
+         * @param value the new icon drawable.
+         */
+        set(value) {
+            if (value != field) {
+                // Used if there was a LottieDrawable in use.
+                cancelLoaderTask()
+                clearComposition()
+                field = value
+                if (field != null) {
+                    updateIconDrawableColor(iconColor)
+                    updateIconAnimation()
+                    updateIconSize()
+                    invalidate()
+                }
+            }
+        }
+
     private val inactiveTrackPaint: Paint
     private val activeTrackPaint: Paint
     private val textPaint: Paint
     private val strokePaint: Paint
-    private var labelColor: ColorStateList? = null
-    private var inactiveTrackColor: ColorStateList? = null
-    private var activeTrackColor: ColorStateList? = null
-    private var iconColor: ColorStateList? = null
-    private var strokeColor: ColorStateList? = null
+
     private val activeTrackRect: Rect
     private val inactiveTrackRect: Rect
     private val drawableRect: Rect
     private val labelBounds: Rect
     private val strokePath: Path
+
+    private var canValidate = false
+
     @AnyRes
     private var iconResource = 0
-    private var iconDrawable: Drawable? = null
     private var cancelAnimator = false
     private var lastTouchY = 0f
     private val onSliderChangeListener: MutableList<OnSliderChangeListener> = ArrayList()
     private val onSliderTouchListener: MutableList<OnSliderTouchListener> = ArrayList()
     private var animator: ObjectAnimator? = null
     private var lottieCompositionTask: LottieTask<LottieComposition>? = null
+
+    init {
+        isSaveEnabled = true
+        inactiveTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        inactiveTrackPaint.style = Paint.Style.FILL
+        activeTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        activeTrackPaint.style = Paint.Style.FILL
+        textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        textPaint.typeface = Typeface.DEFAULT
+        textPaint.textSize = labelSize.toFloat()
+        strokePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        strokePaint.style = Paint.Style.STROKE
+        strokePaint.strokeWidth = strokeWidth.toFloat()
+        activeTrackRect = Rect()
+        inactiveTrackRect = Rect()
+        labelBounds = Rect()
+        drawableRect = Rect()
+        strokePath = Path()
+
+        getResources(context, attrs, defStyleAttr)
+
+        val typeResource: String = try {
+            context.resources.getResourceTypeName(iconResource)
+        } catch (e: NotFoundException) {
+            TYPE_NOT_FOUND
+        }
+        when (typeResource) {
+            TYPE_RAW -> {
+                setIconAnimation(iconResource)
+            }
+            TYPE_DRAWABLE -> {
+                iconDrawable = ContextCompat.getDrawable(context, iconResource)
+            }
+            else -> {
+                Log.d(TAG, "IOSlider: Did not set an Icon Drawable.")
+            }
+        }
+    }
+
     private fun getResources(context: Context, attrs: AttributeSet?, style: Int) {
         val ta = context.obtainStyledAttributes(attrs, R.styleable.IOSlider, style, DEF_STYLE_RES)
-        mRadius = ta.getDimensionPixelSize(R.styleable.IOSlider_cornerRadius, context.resources.getDimensionPixelSize(R.dimen.corner_radius))
+        cornerRadius = ta.getDimensionPixelSize(R.styleable.IOSlider_cornerRadius, context.resources.getDimensionPixelSize(R.dimen.corner_radius))
         iconResource = ta.getResourceId(R.styleable.IOSlider_icon, 0)
         iconColor = getColorStateList(context, ta, R.styleable.IOSlider_iconColor, R.color.slider_icon_color)
         iconSize = ta.getDimensionPixelSize(R.styleable.IOSlider_iconSize, getContext().resources.getDimensionPixelSize(R.dimen.icon_size))
@@ -180,53 +474,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         touchMode = ta.getInt(R.styleable.IOSlider_touchMode, DRAG)
         progress = ta.getInt(R.styleable.IOSlider_progress, 50)
         iconLabelVisibility = ta.getInt(R.styleable.IOSlider_iconTextVisibility, ICONTEXT)
+
         ta.recycle()
         validateMinValue()
         validateMaxValue()
-    }
-
-    /**
-     * Sets the minimum value to the specified value.
-     *
-     * @throws IllegalArgumentException if the minimum value is greater than or
-     * equal to [.maxValue]
-     * @see .getMinValue
-     * @param minValue the desired minimum value for the slider.
-     */
-    fun setMinValue(minValue: Int) {
-        this.minValue = minValue
-        validateMinValue()
-    }
-
-    /**
-     * Returns the minimum value of the progress.
-     * @see .setMinValue
-     * @return the minimum value.
-     */
-    fun getMinValue(): Int {
-        return minValue
-    }
-
-    /**
-     * Sets the maximum value to the specified value.
-     *
-     * @throws IllegalArgumentException if the maximum value is less than or
-     * equal to [.minValue]
-     * @see .getMaxValue
-     * @param maxValue the desired maximum value for the slider
-     */
-    fun setMaxValue(maxValue: Int) {
-        this.maxValue = maxValue
-        validateMaxValue()
-    }
-
-    /**
-     * Returns the maximum value of the progress.
-     * @see .setMaxValue
-     * @return the maximum value.
-     */
-    fun getMaxValue(): Int {
-        return maxValue
+        canValidate = true
     }
 
     /**
@@ -234,274 +486,52 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
      * animate the progress. For interpolation it uses [FastOutSlowInInterpolator]
      * to animate the progress with {@value #ANIMATION_DURATION} duration.
      *
-     * Note: It does not manipulate [.mProgress] since for the animation
+     * Note: It does not manipulate [progress] since for the animation
      * to occur, it requires to have the value to change. Instead, this animation
      * occurs in `mVisualProgress`. It will only dispatch on change once and
      * that's the new progress value.
      *
-     * @see .setProgress
-     * @see .getProgress
-     * @param progress the progress to animate.
+     * @see progress
+     * @param newProgress the progress to animate.
      * @param animate sets whether or not to animate the new progress.
      * @param cancelOnTouch if the animation is running, you can set whether or not
      * you want the user to cancel the animation on {@value TOUCH}
      * or {@value DRAG}.
      */
-    fun setProgress(progress: Int, animate: Boolean, cancelOnTouch: Boolean) {
+    fun setProgress(newProgress: Int, animate: Boolean, cancelOnTouch: Boolean) {
         if (cancelAnimator != cancelOnTouch) {
             cancelAnimator = cancelOnTouch
         }
-        setProgressInternal(progress, animate)
+
+        setProgressInternal(newProgress, animate)
     }
 
     /**
      * This internal method sets the new progress. If the user wants to animate the sliding
      * progress, it will use [ObjectAnimator] to change the [.mVisualProgress].
-     * [.mProgress] will only be dispatched once.
+     * [progress] will only be dispatched once.
      *
-     * @see .setProgress
-     * @see .setProgress
-     * @see .getProgress
-     * @see .getRawProgress
+     * @see setProgress
      */
-    private fun setProgressInternal(progress: Int, animate: Boolean) {
-        if (!isValueValid(progress.toFloat())) return
-        val scaled = (progress - minValue).toFloat() / (maxValue - minValue)
+    private fun setProgressInternal(newProgress: Int, animate: Boolean) {
+        if (!isValueValid(newProgress)) return
+        val scaled = (newProgress - minValue).toFloat() / (maxValue - minValue)
         if (scaled == rawProgress) return
         if (animate) {
-            animator = ObjectAnimator.ofFloat(this, PROPERTY_VISUAL, scaled)
+            animator = ObjectAnimator.ofFloat(this, propertyVisual, scaled)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
-                animator.setAutoCancel(true)
+                animator?.setAutoCancel(true)
             }
-            animator.setDuration(ANIMATION_DURATION.toLong())
-            animator.setInterpolator(TIME_INTERPOLATOR)
-            animator.start()
+            animator?.duration = ANIMATION_DURATION.toLong()
+            animator?.interpolator = TIME_INTERPOLATOR
+            animator?.start()
         } else {
-            setVisualProgress(scaled)
+            visualProgress = scaled
         }
+
         // Dispatch the new value
         rawProgress = scaled
         dispatchProgressChanged(false)
-    }
-
-    /**
-     * Sets the progress for the visual. Used with [ObjectAnimator] to animate the progress.
-     * @param visualProgress the new value to update the visual progress
-     */
-    private fun setVisualProgress(visualProgress: Float) {
-        mVisualProgress = visualProgress
-        updateText()
-        updateIconAnimation()
-        invalidate()
-    }
-
-    /**
-     * Returns the progress of the slider in respect to [.getMinValue]
-     * and [.getMaxValue].
-     * @see .setProgress
-     * @see .setProgress
-     * @see .getRawProgress
-     */
-    /**
-     * Sets the slider to the specified value without animation.
-     *
-     * Does not do anything if the value is less than or
-     * more than maximum value.
-     *
-     * @see .getProgress
-     * @param progress the desired progress the user wants.
-     * Must be in between `minValue ` and `maxValue ` inclusive.
-     */
-    var progress: Int
-        get() = Math.round((maxValue - minValue) * rawProgress + minValue)
-        set(progress) {
-            setProgressInternal(progress, false)
-        }
-
-    /**
-     * This method allows for user to either drag the slider by passing
-     * {@value DRAG} of if you want the progress to change on touch you can
-     * pass {@value TOUCH}.
-     * @see .getTouchMode
-     * @param touchMode either {@value TOUCH} or {@value DRAG}.
-     */
-    fun setTouchMode(@TouchMode touchMode: Int) {
-        if (touchMode != TOUCH && touchMode != DRAG) return
-        if (this.touchMode != touchMode) {
-            this.touchMode = touchMode
-            invalidate()
-        }
-    }
-
-    fun getTouchMode(): Int {
-        return touchMode
-    }
-
-    /**
-     * Sets the width of the stroke.
-     *
-     * @see .getStrokeWidth
-     * @param width the new width of the stroke.
-     */
-    fun setStrokeWidth(@DimenRes width: Int) {
-        if (strokeWidth != width) {
-            strokeWidth = width
-            strokePaint.strokeWidth = width.toFloat()
-            invalidate()
-        }
-    }
-
-    /**
-     * Returns the stroke width.
-     * @see .setStrokeWidth
-     */
-    fun getStrokeWidth(): Int {
-        return strokeWidth
-    }
-
-    /**
-     * Sets the size of the icon.
-     * @see .getIconSize
-     * @param iconSize the new size for the icon.
-     */
-    fun setIconSize(iconSize: Int) {
-        if (this.iconSize == iconSize) return
-        this.iconSize = iconSize
-        updateIconSize()
-        invalidate()
-    }
-
-    /**
-     * Returns the icon size.
-     * @see .setIconSize
-     */
-    fun getIconSize(): Int {
-        return iconSize
-    }
-
-    /**
-     * Sets the text for the label. By default, the label shows the percentage
-     * in between [.minValue] and [.maxValue], but using this method
-     * overrides the text it shows.
-     * @see .getLabelText
-     * @param labelText the string to draw on the slider.
-     */
-    fun setLabelText(labelText: String) {
-        if (this.labelText == labelText) return
-        this.labelText = labelText
-        labelAsPercentage = false
-        invalidate()
-    }
-
-    /**
-     * Returns the current text from the label.
-     *
-     * @see .setLabelText
-     */
-    fun getLabelText(): String {
-        return labelText
-    }
-
-    /**
-     * This method  sets the label to show the percentage of the progress.
-     *
-     * @see .setLabelText
-     * @see .getLabelText
-     */
-    fun setLabelAsPercentage() {
-        if (!labelAsPercentage) {
-            labelAsPercentage = true
-            updateText()
-            invalidate()
-        }
-    }
-
-    /**
-     * Returns the current corner radius of the view.
-     *
-     * @see .setCornerRadius
-     */
-    /**
-     * Sets the corner radius of the view.
-     *
-     * @see .getCornerRadius
-     * @param cornerRadius the new corner radius.
-     */
-    var cornerRadius: Int
-        get() = mRadius
-        set(cornerRadius) {
-            if (mRadius != cornerRadius) {
-                mRadius = cornerRadius
-                updateShadowAndOutline(width, height)
-                invalidate()
-            }
-        }
-
-    /**
-     * This method allows for the user to either show the icon or/and the label
-     * and the order in which to show.
-     * @see .getIconLabelVisibility
-     * @param iconTextVisibility the new visibility.
-     */
-    fun setIconLabelVisibility(@IconTextVisibility iconTextVisibility: Int) {
-        if (iconLabelVisibility != iconTextVisibility) {
-            iconLabelVisibility = iconTextVisibility
-            invalidate()
-        }
-    }
-
-    /**
-     * Returns the visibility of icon and label.
-     *
-     * @see .setIconLabelVisibility
-     */
-    @IconTextVisibility
-    fun getIconLabelVisibility(): Int {
-        return iconLabelVisibility
-    }
-
-    /**
-     * Sets the icon drawable. Can pass null to remove the icon.
-     *
-     * @see .getIconDrawable
-     * @param iconDrawable the new icon drawable.
-     */
-    fun setIconDrawable(iconDrawable: Drawable?) {
-        if (this.iconDrawable === iconDrawable) return
-        // Used if there was a LottieDrawable in use.
-        cancelLoaderTask()
-        clearComposition()
-        this.iconDrawable = iconDrawable
-        if (this.iconDrawable != null) {
-            updateIconDrawableColor(iconColor)
-            updateIconAnimation()
-            updateIconSize()
-            invalidate()
-        }
-    }
-
-    /**
-     * Returns the current icon drawable. May return null.
-     *
-     * @see .setIconDrawable
-     */
-    fun getIconDrawable(): Drawable? {
-        return iconDrawable
-    }
-
-    /**
-     * Sets the icon color. It uses [PorterDuffColorFilter] with
-     * [PorterDuff.Mode.SRC_IN] to set the color state list.
-     * It may be null to remove the color overlay.
-     *
-     * @see .setIconColor
-     * @see .getIconColor
-     * @param iconColor the new color state list or null
-     */
-    fun setIconColor(iconColor: ColorStateList?) {
-        if (this.iconColor === iconColor) return
-        this.iconColor = iconColor
-        refreshColorState()
     }
 
     /**
@@ -513,29 +543,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
      * @param color the new color filter.
      */
     fun setIconColor(@ColorInt color: Int) {
-        setIconColor(ColorStateList.valueOf(color))
-    }
-
-    /**
-     * Retuens the current icon color.
-     *
-     * @see .setIconColor
-     * @see .setIconColor
-     */
-    fun getIconColor(): ColorStateList? {
-        return iconColor
-    }
-
-    /**
-     * Sets the new color state list for the stroke. This cannot be null.
-     *
-     * @see .getStrokeColor
-     * @param strokeColor the new color state list.
-     */
-    fun setStrokeColor(strokeColor: ColorStateList) {
-        if (this.strokeColor == strokeColor) return
-        this.strokeColor = strokeColor
-        refreshColorState()
+        iconColor = ColorStateList.valueOf(color)
     }
 
     /**
@@ -547,148 +555,38 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
      * @param color the new color.
      */
     fun setStrokeColor(@ColorInt color: Int) {
-        setStrokeColor(ColorStateList.valueOf(color))
+        strokeColor = ColorStateList.valueOf(color)
     }
 
     /**
-     * Returns the color of the stroke.
-     *
-     * @see .setStrokeColor
-     * @see .setStrokeColor
-     */
-    fun getStrokeColor(): ColorStateList {
-        return strokeColor!!
-    }
-
-    /**
-     * Sets the new color state list for the inactive track.
-     * This cannot be null.
-     *
-     * @see .setInactiveTrackColor
-     * @see .getInactiveTrackColor
-     * @param inactiveTrackColor the new color state list.
-     */
-    fun setInactiveTrackColor(inactiveTrackColor: ColorStateList) {
-        if (this.inactiveTrackColor == inactiveTrackColor) return
-        this.inactiveTrackColor = inactiveTrackColor
-        refreshColorState()
-    }
-
-    /**
-     * This method is basically [.setInactiveTrackColor] but with
+     * This method is basically [inactiveTrackColor] but with
      * [Color] parameters.
      *
-     * @see .setInactiveTrackColor
-     * @see .getInactiveTrackColor
+     * @see inactiveTrackColor
      * @param color the new color.
      */
     fun setInactiveTrackColor(@ColorInt color: Int) {
-        setInactiveTrackColor(ColorStateList.valueOf(color))
+        inactiveTrackColor = ColorStateList.valueOf(color)
     }
 
     /**
-     * Returns the color of the inactive track.
-     *
-     * @see .setInactiveTrackColor
-     * @see .setInactiveTrackColor
-     */
-    fun getInactiveTrackColor(): ColorStateList {
-        return inactiveTrackColor!!
-    }
-
-    /**
-     * Sets the new color state list for the active track.
-     * This cannot be null.
-     *
-     * @see .setActiveTrackColor
-     * @see .getActiveTrackColor
-     * @param activeTrackColor the new color state list.
-     */
-    fun setActiveTrackColor(activeTrackColor: ColorStateList) {
-        if (this.activeTrackColor == activeTrackColor) return
-        this.activeTrackColor = activeTrackColor
-        refreshColorState()
-    }
-
-    /**
-     * This method is basically [.setActiveTrackColor] but with
+     * This method is basically [activeTrackColor] but with
      * [Color] parameters.
      *
-     * @see .setActiveTrackColor
-     * @see .getActiveTrackColor
+     * @see activeTrackColor
      * @param color the new color.
      */
     fun setActiveTrackColor(@ColorInt color: Int) {
-        setActiveTrackColor(ColorStateList.valueOf(color))
+        activeTrackColor = ColorStateList.valueOf(color)
     }
 
     /**
-     * Returns the color of the active track.
-     *
-     * @see .setActiveTrackColor
-     * @see .setActiveTrackColor
-     */
-    fun getActiveTrackColor(): ColorStateList {
-        return activeTrackColor!!
-    }
-
-    /**
-     * Returns the current label text color state list.
-     *
-     * @see .setLabelColor
-     * @see .setLabelColor
-     * @return the current label color.
-     */
-    fun getLabelColor(): ColorStateList {
-        return labelColor!!
-    }
-
-    /**
-     * Sets the label text to the specified color list. Does not do anything if
-     * the color state list is the same.
-     *
-     * Note: If you have blending mode enabled it will still update the color but
-     * depending on the [.mProgress] it might be showing the inverted color.
-     * @see .getLabelColor
-     * @param labelColor the new color state list.
-     */
-    fun setLabelColor(labelColor: ColorStateList) {
-        if (this.labelColor == labelColor) return
-        this.labelColor = labelColor
-        refreshColorState()
-    }
-
-    /**
-     * This is basically [.setLabelColor] but with a [Color] int
+     * This is basically [labelColor] but with a [Color] int
      * instead.
-     * @see .getLabelColor
      * @param color the new color.
      */
     fun setLabelColor(@ColorInt color: Int) {
-        setLabelColor(ColorStateList.valueOf(color))
-    }
-
-    /**
-     * This method blends the icon and label based on the progress. If the progress
-     * draws under the icon or label, it colors them with the inactive color.
-     *
-     * @see .isIconLabelBlending
-     * @param blend either blend or not blend the color.
-     */
-    fun setIconLabelBlending(blend: Boolean) {
-        if (blend != iconLabelBlending) {
-            iconLabelBlending = blend
-            invalidate()
-        }
-    }
-
-    /**
-     * Returns whether or not blending on icon and text is enabled.
-     *
-     * @see .setIconLabelBlending
-     */
-    fun isIconLabelBlending(): Boolean {
-        return iconLabelBlending
+        labelColor = ColorStateList.valueOf(color)
     }
 
     /**
@@ -704,7 +602,6 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     private fun dispatchProgressChanged(fromUser: Boolean) {
-        val progress = progress
         for (changeListener in onSliderChangeListener) {
             changeListener.onProgressChanged(this, progress, fromUser)
         }
@@ -732,50 +629,56 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     private fun updateText() {
         if (labelAsPercentage) {
-            val value = mVisualProgress * 100
+            val value = visualProgress * 100
             labelText = String.format(Locale.ENGLISH, "%.0f", value) + "%"
         }
     }
 
     private fun updateIconAnimation() {
-        if (iconDrawable == null) return
-        if (iconDrawable is LottieDrawable) {
-            val lottieDrawable = iconDrawable as LottieDrawable
-            lottieDrawable.progress = mVisualProgress
-        } else {
-            val didChange = iconDrawable!!.setLevel((mVisualProgress * (maxValue - minValue)).toInt())
-            if (didChange) {
-                iconDrawable!!.invalidateSelf()
+        if (iconDrawable != null) {
+            if (iconDrawable is LottieDrawable) {
+                val lottieDrawable = iconDrawable as LottieDrawable
+                lottieDrawable.progress = visualProgress
+            } else {
+                val didChange = iconDrawable!!.setLevel((visualProgress * (maxValue - minValue)).toInt())
+                if (didChange) {
+                    iconDrawable!!.invalidateSelf()
+                }
             }
         }
     }
 
     private fun updateIconDrawableColor(colorStateList: ColorStateList?) {
-        if (iconDrawable == null) return
-        var colorFilter: PorterDuffColorFilter? = null
-        if (colorStateList != null) {
-            colorFilter = PorterDuffColorFilter(getColorForState(colorStateList), PorterDuff.Mode.SRC_IN)
-        }
-        if (iconDrawable is LottieDrawable) {
-            val keyPath = KeyPath("**")
-            val callback = LottieValueCallback<ColorFilter>(colorFilter)
-            (iconDrawable as LottieDrawable).addValueCallback(keyPath, LottieProperty.COLOR_FILTER, callback)
-        } else { //            if (iconDrawable.getColorFilter() != colorFilter) {
-//                iconDrawable.setColorFilter(colorFilter);
-//            }
-//
-            DrawableCompat.setTintList(iconDrawable!!, colorStateList)
+        if (iconDrawable != null) {
+            var colorFilter: PorterDuffColorFilter? = null
+            if (colorStateList != null) {
+                colorFilter = PorterDuffColorFilter(getColorForState(colorStateList), PorterDuff.Mode.SRC_IN)
+            }
+
+            if (iconDrawable is LottieDrawable) {
+                val keyPath = KeyPath("**")
+                val callback = LottieValueCallback<ColorFilter>(colorFilter)
+                (iconDrawable as LottieDrawable).addValueCallback(keyPath, LottieProperty.COLOR_FILTER, callback)
+            } else {
+                DrawableCompat.setTintList(iconDrawable!!, colorStateList)
+            }
         }
     }
 
     private fun updateIconSize() {
-        if (iconDrawable == null) return
-        if (iconDrawable is LottieDrawable) { /// Workaround since LottieDrawable handles width/height on setScale
-            val previousWidth = Math.max(1, iconDrawable.getBounds().width())
-            val scale = iconSize.toFloat() / previousWidth
-            (iconDrawable as LottieDrawable).scale = scale
-        } else {
-            iconDrawable!!.setBounds(0, 0, iconSize, iconSize)
+        if (iconDrawable != null) {
+            if (iconDrawable is LottieDrawable) {
+                /// Workaround since LottieDrawable handles width/height on setScale
+                var previousWidth = iconDrawable!!.bounds.width()
+                if (previousWidth == 0) {
+                    previousWidth = iconSize
+                }
+                val scale: Float = (iconSize.toFloat()/previousWidth.toFloat())
+
+                (iconDrawable as LottieDrawable).scale = scale
+            } else {
+                iconDrawable!!.setBounds(0, 0, iconSize, iconSize)
+            }
         }
     }
 
@@ -793,14 +696,14 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
-                    outline.setRoundRect(left, top, right, bottom, mRadius.toFloat())
+                    outline.setRoundRect(left, top, right, bottom, cornerRadius.toFloat())
                 }
             }
             strokePath.reset()
-            strokePath.addRoundRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), mRadius.toFloat(), mRadius.toFloat(), Path.Direction.CW)
+            strokePath.addRoundRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), cornerRadius.toFloat(), cornerRadius.toFloat(), Path.Direction.CW)
         } else {
             strokePath.reset()
-            strokePath.addPath(createRoundRect(left, top, right, bottom, mRadius.toFloat()))
+            strokePath.addPath(createRoundRect(left, top, right, bottom, cornerRadius.toFloat()))
         }
     }
 
@@ -809,10 +712,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (!isEnabled || animator != null && animator!!.isRunning && !cancelAnimator) return false
         if (animator != null) {
             animator!!.cancel()
-            mVisualProgress = animator!!.animatedValue as Float
-            rawProgress = mVisualProgress
+            visualProgress = animator!!.animatedValue as Float
+            rawProgress = visualProgress
             animator = null
         }
+
         val dY: Float
         var handledTouch = false
         var needsUpdate = false
@@ -820,30 +724,33 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         when (event.action and MotionEvent.ACTION_MASK) {
             MotionEvent.ACTION_DOWN -> {
                 parent.requestDisallowInterceptTouchEvent(true)
-                lastTouchY = event.y - paddingTop - Math.round(strokeWidth / 2.toFloat())
+                lastTouchY = event.y - paddingTop - (strokeWidth / 2.toFloat()).roundToInt()
                 if (touchMode == TOUCH) {
-                    mVisualProgress = Math.max(0.0f, Math.min(1.0f, 1.0f - lastTouchY / height))
-                    rawProgress = mVisualProgress
+                    visualProgress = max(0.0f, min(1.0f, 1.0f - lastTouchY / height))
+                    rawProgress = visualProgress
                     needsUpdate = true
                 }
                 dispatchOnStartTrackingTouch()
                 isPressed = true
                 handledTouch = true
             }
+
             MotionEvent.ACTION_MOVE -> {
                 parent.requestDisallowInterceptTouchEvent(true)
-                dY = lastTouchY - event.y + paddingTop + Math.round(strokeWidth / 2.toFloat())
+                dY = lastTouchY - event.y + paddingTop + (strokeWidth / 2.toFloat()).roundToInt()
                 needsUpdate = calculateValueFromEvent(dY, height)
                 lastTouchY -= dY
                 isPressed = true
                 handledTouch = true
             }
+
             MotionEvent.ACTION_UP -> {
                 parent.requestDisallowInterceptTouchEvent(false)
                 dispatchOnStopTrackingTouch()
                 isPressed = false
                 handledTouch = true
             }
+
             MotionEvent.ACTION_CANCEL -> {
                 parent.requestDisallowInterceptTouchEvent(false)
                 isPressed = false
@@ -864,10 +771,10 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         var updatedValue = false
         val distance = distanceYY / height
         var newProgress = rawProgress + distance
-        newProgress = Math.max(0.0f, Math.min(1.0f, newProgress))
+        newProgress = max(0.0f, min(1.0f, newProgress))
         if (rawProgress != newProgress) {
-            mVisualProgress = newProgress
-            rawProgress = mVisualProgress
+            visualProgress = newProgress
+            rawProgress = visualProgress
             updatedValue = true
         }
         return updatedValue
@@ -881,10 +788,10 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     override fun drawableStateChanged() {
         super.drawableStateChanged()
-        textPaint.color = getColorForState(labelColor!!)
-        activeTrackPaint.color = getColorForState(activeTrackColor!!)
-        inactiveTrackPaint.color = getColorForState(inactiveTrackColor!!)
-        strokePaint.color = getColorForState(strokeColor!!)
+        textPaint.color = getColorForState(labelColor)
+        activeTrackPaint.color = getColorForState(activeTrackColor)
+        inactiveTrackPaint.color = getColorForState(inactiveTrackColor)
+        strokePaint.color = getColorForState(strokeColor)
         updateIconDrawableColor(iconColor)
     }
 
@@ -897,86 +804,88 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         /// Clips view to stroke path
         canvas.clipPath(strokePath)
         /// Draws inactive track
-        drawInactiveTrack(canvas, left, top, right, bottom)
+        drawInactiveTrack(canvas, right, bottom)
         /// Draws active track
-        drawActiveTrack(canvas, left, top, right, bottom)
+        drawActiveTrack(canvas, right, bottom)
         /// Draws the text
-        drawLabel(canvas, left, top)
+        drawLabel(canvas)
         /// Draws the icon
-        drawIcon(canvas, left, top)
+        drawIcon(canvas)
         // Draws the stroke
-// We have to use round rect since path causes the view to draw another layer
+        // We have to use round rect since path causes the view to draw another layer
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            canvas.drawRoundRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), mRadius.toFloat(), mRadius.toFloat(), strokePaint)
+            canvas.drawRoundRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), cornerRadius.toFloat(), cornerRadius.toFloat(), strokePaint)
         } else {
             canvas.drawPath(strokePath, strokePaint)
         }
     }
 
-    private fun drawInactiveTrack(canvas: Canvas, left: Int, top: Int, right: Int, bottom: Int) {
-        var bottom = bottom
-        val inactiveTrackRange = 1f - mVisualProgress
-        val height = bottom - top - strokeWidth
-        bottom = Math.round(inactiveTrackRange * height) + paddingTop + strokeWidth / 2
-        inactiveTrackRect[left + strokeWidth / 2, top + strokeWidth / 2, right - strokeWidth / 2] = bottom
+    private fun drawInactiveTrack(canvas: Canvas, widthPadding: Int, heightPadding: Int) {
+        var bottomPadding = heightPadding
+        val inactiveTrackRange = 1f - visualProgress
+        val height = bottomPadding - paddingTop - strokeWidth
+        bottomPadding = (inactiveTrackRange * height).roundToInt() + paddingTop + strokeWidth / 2
+        inactiveTrackRect[paddingStart + strokeWidth / 2, paddingTop + strokeWidth / 2, widthPadding - strokeWidth / 2] = bottomPadding
         canvas.drawRect(inactiveTrackRect, inactiveTrackPaint)
     }
 
-    private fun drawActiveTrack(canvas: Canvas, left: Int, top: Int, right: Int, bottom: Int) {
-        var top = top
-        val height = bottom - top - strokeWidth
-        top = Math.round(height - mVisualProgress * height) + paddingTop + strokeWidth / 2
-        activeTrackRect[left + strokeWidth / 2, top, right - strokeWidth / 2] = bottom - strokeWidth / 2
+    private fun drawActiveTrack(canvas: Canvas, widthPadding: Int, heightPadding: Int) {
+        var topPadding = paddingTop
+        val height = heightPadding - topPadding - strokeWidth
+        topPadding = (height - visualProgress * height).roundToInt() + paddingTop + strokeWidth / 2
+        activeTrackRect[paddingStart + strokeWidth / 2, topPadding, widthPadding - strokeWidth / 2] = heightPadding - strokeWidth / 2
         canvas.drawRect(activeTrackRect, activeTrackPaint)
     }
 
-    private fun drawLabel(canvas: Canvas, left: Int, top: Int) {
-        var left = left
-        var top = top
+    private fun drawLabel(canvas: Canvas) {
+
         if (!canDrawLabel()) return
         textPaint.getTextBounds(labelText, 0, labelText.length, labelBounds)
         labelBounds.right = textPaint.measureText(labelText).toInt()
-        val width = width - (left + paddingEnd)
-        val height = height - (top + paddingBottom)
+        val width = width - (paddingStart + paddingEnd)
+        val height = height - (paddingBottom + paddingBottom)
         val position = if (iconLabelVisibility == TEXT) 0.5f else if (iconLabelVisibility == TEXTICON) 0.25f else 0.75f
-        left += (width - labelBounds.width()) / 2
-        top += (height * position).toInt() - labelBounds.height() / 2
+
+        val textLeftPadding = paddingStart + (width - labelBounds.width()) / 2
+        val textTopPadding = paddingTop + (height * position).toInt() - labelBounds.height() / 2
+
         if (iconLabelBlending) {
-            val isInBounds = activeTrackRect.contains(left, top + labelBounds.height() / 2, left + labelBounds.width(), top + labelBounds.height())
+            val isInBounds = activeTrackRect.contains(textLeftPadding, textTopPadding + labelBounds.height() / 2, textLeftPadding + labelBounds.width(), textTopPadding + labelBounds.height())
             if (isInBounds) {
-                if (textPaint.color != getColorForState(inactiveTrackColor!!)) {
-                    textPaint.color = getColorForState(inactiveTrackColor!!)
+                if (textPaint.color != getColorForState(inactiveTrackColor)) {
+                    textPaint.color = getColorForState(inactiveTrackColor)
                 }
             } else {
-                if (textPaint.color != getColorForState(labelColor!!)) {
-                    textPaint.color = getColorForState(labelColor!!)
+                if (textPaint.color != getColorForState(labelColor)) {
+                    textPaint.color = getColorForState(labelColor)
                 }
             }
         } else {
-            if (textPaint.color != getColorForState(labelColor!!)) {
-                textPaint.color = getColorForState(labelColor!!)
+            if (textPaint.color != getColorForState(labelColor)) {
+                textPaint.color = getColorForState(labelColor)
             }
         }
+
         canvas.save()
-        canvas.rotate(-rotation, paddingStart + width / 2.toFloat(), height * position + paddingTop)
-        canvas.drawText(labelText, 0, labelText.length, left.toFloat(), top + labelBounds.height().toFloat(), textPaint)
+        canvas.rotate(-rotation, (paddingStart + width / 2).toFloat(), height * position + paddingTop)
+        canvas.drawText(labelText, 0, labelText.length, textLeftPadding.toFloat(), textTopPadding + labelBounds.height().toFloat(), textPaint)
         canvas.restore()
     }
 
-    private fun drawIcon(canvas: Canvas, left: Int, top: Int) {
-        var left = left
-        var top = top
+    private fun drawIcon(canvas: Canvas) {
         if (iconDrawable == null || !canDrawIcon()) return
+
         val iconWidth = iconDrawable!!.bounds.width()
         val iconHeight = iconDrawable!!.bounds.height()
-        val width = width - (left + paddingEnd)
-        val height = height - (top + paddingBottom)
+        val width = width - (paddingStart + paddingEnd)
+        val height = height - (paddingTop + paddingBottom)
         val position = if (iconLabelVisibility == ICON) 0.5f else if (iconLabelVisibility == TEXTICON) 0.75f else 0.25f
-        left += (width - iconWidth) / 2
-        top += (height * position).toInt() - iconHeight / 2
-        drawableRect[left, top, left + iconWidth] = top + iconHeight
+
+        val iconLeftPadding = (width - iconWidth) / 2 + paddingStart
+        val iconTopPadding = (height * position).toInt() - iconHeight / 2 + paddingTop
+
         if (iconLabelBlending) {
-            val isInBounds = activeTrackRect.contains(left, top + iconHeight / 2, left + iconWidth, top + iconHeight)
+            val isInBounds = activeTrackRect.contains(iconLeftPadding, iconTopPadding + iconHeight / 2, iconLeftPadding + iconWidth, iconTopPadding + iconHeight)
             if (isInBounds) {
                 updateIconDrawableColor(inactiveTrackColor)
             } else {
@@ -985,10 +894,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         } else {
             updateIconDrawableColor(iconColor)
         }
+
         canvas.save()
-        canvas.rotate(-rotation, paddingStart + width / 2.toFloat(),
+        canvas.rotate(-rotation, (paddingStart + width / 2).toFloat(),
                 paddingTop + height * position)
-        canvas.translate(left.toFloat(), top.toFloat())
+        canvas.translate(iconLeftPadding.toFloat(), iconTopPadding.toFloat())
         iconDrawable!!.draw(canvas)
         canvas.restore()
     }
@@ -998,12 +908,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         return colorStateList.getColorForState(drawableState, colorStateList.defaultColor)
     }
 
-    private fun refreshColorState() {
-        drawableStateChanged()
-        invalidate()
-    }
-
-    private fun isValueValid(value: Float): Boolean {
+    private fun isValueValid(value: Int): Boolean {
         var isValid = false
         if (value < minValue || value > maxValue) {
             Log.e(TAG, "Value must be in between min value and max value inclusive")
@@ -1034,6 +939,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private fun canDrawLabel(): Boolean {
         return iconLabelVisibility == TEXT || iconLabelVisibility == TEXTICON || iconLabelVisibility == ICONTEXT
     }
+
     /////////////// LottieDrawable Settings /////////////////
     /**
      * Sets the animation from a file in the raw directory. This is used for animating
@@ -1044,6 +950,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         if (iconDrawable !is LottieDrawable) {
             iconDrawable = null
             iconDrawable = LottieDrawable()
+            (iconDrawable as LottieDrawable).callback = this
         }
         val task = LottieCompositionFactory.fromRawRes(context, res, null)
         setCompositionTask(task)
@@ -1083,16 +990,16 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     }
 
     /**
-     * This is a wrapper for [.setVisualProgress] so it can be used
+     * This is a wrapper for [visualProgress] so it can be used
      * with ObjectAnimator.
      */
-    private val PROPERTY_VISUAL: Property<IOSlider, Float> = object : Property<IOSlider, Float>(Float::class.java, VISUAL_PROGRESS) {
+    private val propertyVisual: Property<IOSlider, Float> = object : Property<IOSlider, Float>(Float::class.java, VISUAL_PROGRESS) {
         override fun set(`object`: IOSlider, value: Float) {
-            `object`.setVisualProgress(value)
+            `object`.visualProgress = value
         }
 
         override fun get(`object`: IOSlider): Float {
-            return `object`.mVisualProgress
+            return `object`.visualProgress
         }
     }
 
@@ -1102,7 +1009,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         state.minValue = minValue
         state.maxValue = maxValue
         state.mProgress = rawProgress
-        state.mVisualProgress = mVisualProgress
+        state.mVisualProgress = visualProgress
         state.labelSize = labelSize
         state.iconSize = iconSize
         state.labelAsPercentage = labelAsPercentage
@@ -1118,7 +1025,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         minValue = savedState.minValue
         maxValue = savedState.maxValue
         rawProgress = savedState.mProgress
-        mVisualProgress = savedState.mVisualProgress
+        visualProgress = savedState.mVisualProgress
         iconSize = savedState.iconSize
         labelSize = savedState.labelSize
         labelText = savedState.labelText!!
@@ -1133,7 +1040,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         dispatchProgressChanged(false)
     }
 
-    private class IOSliderSaveState : BaseSavedState {
+    internal class IOSliderSaveState : BaseSavedState {
         var minValue = 0
         var maxValue = 0
         var mProgress = 0f
@@ -1148,7 +1055,9 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         @IconTextVisibility
         var iconTextVisible = 0
 
-        internal constructor(source: Parcel) : super(source) {
+        constructor(superState: Parcelable?) : super(superState)
+
+        constructor(source: Parcel) : super(source) {
             minValue = source.readInt()
             maxValue = source.readInt()
             mProgress = source.readFloat()
@@ -1156,13 +1065,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             iconSize = source.readInt()
             labelSize = source.readInt()
             labelText = source.readString()
-            labelAsPercentage = source.readBoolean()
-            iconLabelBlend = source.readBoolean()
+            labelAsPercentage = source.readByte().toInt() == 1
+            iconLabelBlend = source.readByte().toInt() == 1
             touchMode = source.readInt()
             iconTextVisible = source.readInt()
         }
-
-        internal constructor(superState: Parcelable?) : super(superState) {}
 
         override fun writeToParcel(out: Parcel, flags: Int) {
             super.writeToParcel(out, flags)
@@ -1173,21 +1080,23 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             out.writeInt(iconSize)
             out.writeInt(labelSize)
             out.writeString(labelText)
-            out.writeBoolean(labelAsPercentage)
-            out.writeBoolean(iconLabelBlend)
+            out.writeByte(if (labelAsPercentage) 1 else 0)
+            out.writeByte(if (iconLabelBlend) 1 else 0)
             out.writeInt(touchMode)
             out.writeInt(iconTextVisible)
         }
 
-        companion object {
-            val CREATOR: Parcelable.Creator<IOSliderSaveState> = object : Parcelable.Creator<IOSliderSaveState?> {
-                override fun createFromParcel(`in`: Parcel): IOSliderSaveState? {
-                    return IOSliderSaveState(`in`)
-                }
+        override fun describeContents(): Int {
+            return 0
+        }
 
-                override fun newArray(size: Int): Array<IOSliderSaveState?> {
-                    return arrayOfNulls(size)
-                }
+        companion object CREATOR : Parcelable.Creator<IOSliderSaveState> {
+            override fun createFromParcel(parcel: Parcel): IOSliderSaveState {
+                return IOSliderSaveState(parcel)
+            }
+
+            override fun newArray(size: Int): Array<IOSliderSaveState?> {
+                return arrayOfNulls(size)
             }
         }
     }
@@ -1198,6 +1107,7 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         private const val TYPE_RAW = "raw"
         private const val TYPE_DRAWABLE = "drawable"
         private const val TYPE_NOT_FOUND = "not_found"
+
         /**
          * Sets the slider to change on drag.
          */
@@ -1226,9 +1136,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
          * Does not show the icon and the label.
          */
         const val NONE = 4
+
         private const val VISUAL_PROGRESS = "VisualProgress"
         private val TIME_INTERPOLATOR = FastOutSlowInInterpolator()
         private const val ANIMATION_DURATION = 1000
+
         /// For api lower than 21
         fun createRoundRect(left: Int, top: Int, right: Int, bottom: Int, radius: Float): Path {
             val path = Path()
@@ -1260,43 +1172,11 @@ class IOSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
                     }
                 }
             }
+
             if (setDefaultValue) {
                 colorStateList = AppCompatResources.getColorStateList(context, defaultValue)
             }
             return colorStateList!!
-        }
-    }
-
-    init {
-        isSaveEnabled = true
-        getResources(context, attrs, defStyleAttr)
-        inactiveTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        inactiveTrackPaint.style = Paint.Style.FILL
-        activeTrackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        activeTrackPaint.style = Paint.Style.FILL
-        textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        textPaint.typeface = Typeface.DEFAULT
-        textPaint.textSize = labelSize.toFloat()
-        strokePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        strokePaint.style = Paint.Style.STROKE
-        strokePaint.strokeWidth = strokeWidth.toFloat()
-        activeTrackRect = Rect()
-        inactiveTrackRect = Rect()
-        labelBounds = Rect()
-        drawableRect = Rect()
-        strokePath = Path()
-        val typeResource: String
-        typeResource = try {
-            context.resources.getResourceTypeName(iconResource)
-        } catch (e: NotFoundException) {
-            TYPE_NOT_FOUND
-        }
-        if (typeResource == TYPE_RAW) {
-            setIconAnimation(iconResource)
-        } else if (typeResource == TYPE_DRAWABLE) {
-            setIconDrawable(ContextCompat.getDrawable(context, iconResource))
-        } else {
-            Log.d(TAG, "IOSlider: Did not set an Icon Drawable.")
         }
     }
 }

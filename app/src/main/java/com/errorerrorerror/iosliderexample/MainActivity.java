@@ -15,9 +15,7 @@ public class MainActivity extends AppCompatActivity {
 
     int corner;
     int stroke;
-
     float elevation;
-
     ActivityMainBinding binding;
 
     @Override

@@ -2,7 +2,7 @@
 <resources>
     <dimen name="corner_radius">40dp</dimen>
     <dimen name="text_size">38sp</dimen>
-    <dimen name="icon_size">60dp</dimen>
+    <dimen name="icon_size">90dp</dimen>
     <dimen name="min_width">100dp</dimen>
     <dimen name="min_height">200dp</dimen>
     <dimen name="stroke_width">0dp</dimen>
